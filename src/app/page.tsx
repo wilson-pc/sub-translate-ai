@@ -18,9 +18,9 @@ import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 const head = typeof window !== 'undefined' ? localStorage.getItem('apiKey') : 'fgvr';
 const modele = typeof window !== 'undefined' ? localStorage.getItem('model') : 'fiewio';
-const genAI = new GoogleGenerativeAI(head??'')
+const genAI = new GoogleGenerativeAI(head ?? '')
 const model = genAI.getGenerativeModel({
-  model: modele??'grtegt'
+  model: modele ?? 'grtegt'
 })
 
 function timeout(ms: number) {
@@ -94,55 +94,61 @@ function reemplazarTiemposSrt(texto: string) {
   return texto.replace(patronTiempo, '[T]')
 }
 
-function quitarNumerosYTiempos(texto: string) {
+function quitarNumerosYTiempos(texto: string): string[] {
   const lineas = texto.split('\n')
-  const soloTexto = []
+  const bloques: string[] = []
   let i = 0
 
   while (i < lineas.length) {
-    // Saltar la línea del número de entrada
-    i++
-    // Saltar la línea del tiempo
-    i++
-    // Extraer todas las líneas de texto hasta la siguiente entrada
+    i++ // número
+    i++ // tiempo
+
+    let bloque: string[] = []
+
+    // Acumular todas las líneas de texto hasta línea vacía
     while (i < lineas.length && lineas[i].trim() !== '') {
-      soloTexto.push(lineas[i].trim())
+      bloque.push(lineas[i].trim())
       i++
     }
-    // Saltar la línea vacía (si existe)
-    if (lineas[i] && lineas[i].trim() === '') {
+
+    bloques.push(bloque.join('\n'))
+
+    // Saltar línea vacía
+    if (i < lineas.length && lineas[i].trim() === '') {
       i++
     }
   }
 
-  return soloTexto.join('\n')
+  return bloques
 }
-// Función para restaurar números y tiempos
-function restaurarNumerosYTiempos(
-  textoProcesado: string,
-  textoOriginal: string
-) {
+function restaurarNumerosYTiempos(textoProcesado: string[], textoOriginal: string): string {
   const lineasOriginales = textoOriginal.split('\n')
-  const lineasProcesadas = textoProcesado.split('\n')
-  const resultado = []
-  let i = 0
-  let j = 0
+  const resultado: string[] = []
+
+  let i = 0 // índice en líneas originales
+  let j = 0 // índice en texto traducido
 
   while (i < lineasOriginales.length) {
-    // Agregar el número de entrada
-    resultado.push(lineasOriginales[i].trim())
-    i++
-    // Agregar la línea del tiempo
-    resultado.push(lineasOriginales[i].trim())
-    i++
-    // Agregar todas las líneas de texto procesado
+    // Línea del número
+    resultado.push(lineasOriginales[i++].trim())
+
+    // Línea del tiempo
+    if (i < lineasOriginales.length) {
+      resultado.push(lineasOriginales[i++].trim())
+    }
+
+    // Saltar líneas de texto original
     while (i < lineasOriginales.length && lineasOriginales[i].trim() !== '') {
-      resultado.push(lineasProcesadas[j].trim())
-      j++
       i++
     }
-    // Agregar una línea vacía (si existe en el original)
-    if (lineasOriginales[i] && lineasOriginales[i].trim() === '') {
+
+    // Agregar texto traducido si existe
+    const bloqueTraducido = textoProcesado[j++] ?? ''
+    const lineasTraducidas = bloqueTraducido.split('\n')
+    resultado.push(...lineasTraducidas.map(l => l.trim()))
+
+    // Línea vacía si corresponde
+    if (i < lineasOriginales.length && lineasOriginales[i].trim() === '') {
       resultado.push('')
       i++
     }
@@ -291,6 +297,13 @@ export default function Home() {
         const text = await readFileContents(element)
         const id = uuidv4()
         if (element.name.endsWith('.srt')) {
+          lfiles.push({
+            id: id,
+            filename: element.name,
+            original: text,
+            state: 'PENDING',
+            split: quitarNumerosYTiempos(text)
+          })
         } else {
           lfiles.push({
             id: id,
@@ -312,27 +325,42 @@ export default function Home() {
         state: 'PROCESSING'
       })
       if (element.filename.endsWith('.srt')) {
-        /*
-        const textoModificado = quitarNumerosYTiempos(element)
 
-        const { data } = await axios.post('/api/translate', {
-          content: textoModificado,
-          format: 'srt'
+        const parsetString = element.split?.join(' ||| ')
+        let data = ''
+        const currentKey = apiKeys?.find((k) => k.isDefault === true)
+        if (currentKey?.family === "deepseek") {
+
+          const rs = await axios.post('/api/translate', {
+            content: parsetString,
+            format: 'srt'
+          })
+          data = rs.data
+        } else {
+          data = await translateSub(parsetString ?? '')
+        }
+
+
+
+        const restored = data.split(/\s*\|\|\|\s*/).map((parte: any) => parte.trim())
+        updateSubFileState({
+          ...element,
+          state: 'DONE',
+          splitTranslated: restored
         })
-        // console.log(data)
-
-        const restaurado = restaurarNumerosYTiempos(data as string, text)
-        const filename = `${element.name.replaceAll('.srt', '')}_es.srt`
-        triggerFileDownload(filename, restaurado)*/
       } else {
         const parsetString = element.split?.join(' ||| ')
-        const {data}= await axios.post('/api/translate', {content:parsetString, format:'ass'})
-/*
         let data = ''
+        const currentKey = apiKeys?.find((k) => k.isDefault === true)
+        if (currentKey?.family === "deepseek") {
+          const rs = await axios.post('/api/translate', { content: parsetString, format: 'ass' })
+          data = rs.data
+        } else {
+          data = await translateSub(parsetString ?? '')
+        }
 
-        data = await translateSub(parsetString ?? '')
-*/
-        const restored = data.split(/\s*\|\|\|\s*/).map((parte:any) => parte.trim())
+
+        const restored = data.split(/\s*\|\|\|\s*/).map((parte: any) => parte.trim())
         updateSubFileState({
           ...element,
           state: 'DONE',
@@ -376,12 +404,22 @@ export default function Home() {
   }
 
   const download = async (file: SubFile) => {
-    const filename = `${file.filename.replaceAll('.ass', '')}_es.ass`
-    const restored = restoreDialogsToASS(
-      file.original,
-      file.splitTranslated ?? []
-    )
-    triggerFileDownload(filename, restored)
+    console.log(file)
+    if (file.filename.endsWith('.srt')) {
+      const filename = `${file.filename.replaceAll('.srt', '')}_es.ass`
+      const restored = restaurarNumerosYTiempos(
+        file.splitTranslated ?? [],
+        file.original,
+      )
+      triggerFileDownload(filename, restored)
+    } else {
+      const filename = `${file.filename.replaceAll('.ass', '')}_es.ass`
+      const restored = restoreDialogsToASS(
+        file.original,
+        file.splitTranslated ?? []
+      )
+      triggerFileDownload(filename, restored)
+    }
   }
   return (
     <div className='grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]'>
@@ -494,7 +532,7 @@ export default function Home() {
                       {file.state === 'DONE' && (
                         <div className='flex items-center justify-center'>
                           {file.split.length ===
-                          file.splitTranslated?.length ? (
+                            file.splitTranslated?.length ? (
                             <button
                               className='px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700'
                               onClick={() => {
@@ -504,7 +542,7 @@ export default function Home() {
                               Descargar
                             </button>
                           ) : (
-                            <button className='relative group px-4 py-2 rounded-lg text-white bg-yellow-600 hover:bg-yellow-700'  onClick={() => {
+                            <button className='relative group px-4 py-2 rounded-lg text-white bg-yellow-600 hover:bg-yellow-700' onClick={() => {
                               download(file)
                             }}>
                               Descargar
