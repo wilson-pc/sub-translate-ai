@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 
 //ciertamente has cuidado bien
 'use client'
@@ -11,13 +10,17 @@ import { restoreDialogsToASS, triggerFileDownload } from '@/utils/ass'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAtom } from 'jotai/react'
+
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
-const head = typeof window !== 'undefined' ? localStorage.getItem('apiKey') : 'fgvr';
-const modele = typeof window !== 'undefined' ? localStorage.getItem('model') : 'fiewio';
+import { encrypt } from '@/utils/crypto'
+const head =
+  typeof window !== 'undefined' ? localStorage.getItem('apiKey') : 'fgvr'
+const modele =
+  typeof window !== 'undefined' ? localStorage.getItem('model') : 'fiewio'
 const genAI = new GoogleGenerativeAI(head ?? '')
 const model = genAI.getGenerativeModel({
   model: modele ?? 'grtegt'
@@ -25,6 +28,38 @@ const model = genAI.getGenerativeModel({
 
 function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+async function generatePayloadKimi(text: string) {
+  const param = {
+    config: {
+      baseURL: 'https://api.moonshot.cn/v1',
+      apiKey: localStorage.getItem('apiKey') ?? ''
+    },
+    completion: {
+      model: localStorage.getItem('model') ?? '',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are an experienced semantic translator, specialized in creating .ass files.  Always return the full translation. If the response is truncated, continue from where it was left off.'
+        },
+        {
+          role: 'user',
+          content: `
+        translate this subtitle to spanish latin american. the dialogues are separated by "|||"
+        
+        ${text}
+        
+        keep the original format and keep the context when translating. if there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.  
+        **VERY IMPORTANT: Do not remove any dialogue. Each dialogue in the original text must have its corresponding translation. Dialogues cannot be added or removed. Make sure the translation maintains the same number of dialogues as the original text.**  
+        **Dialogues cannot be removed.**
+        `
+        }
+      ]
+    }
+  }
+
+  return encrypt(JSON.stringify(param))
 }
 
 async function translateSub(text: string) {
@@ -103,7 +138,7 @@ function quitarNumerosYTiempos(texto: string): string[] {
     i++ // número
     i++ // tiempo
 
-    let bloque: string[] = []
+    const bloque: string[] = []
 
     // Acumular todas las líneas de texto hasta línea vacía
     while (i < lineas.length && lineas[i].trim() !== '') {
@@ -121,7 +156,10 @@ function quitarNumerosYTiempos(texto: string): string[] {
 
   return bloques
 }
-function restaurarNumerosYTiempos(textoProcesado: string[], textoOriginal: string): string {
+function restaurarNumerosYTiempos(
+  textoProcesado: string[],
+  textoOriginal: string
+): string {
   const lineasOriginales = textoOriginal.split('\n')
   const resultado: string[] = []
 
@@ -145,7 +183,7 @@ function restaurarNumerosYTiempos(textoProcesado: string[], textoOriginal: strin
     // Agregar texto traducido si existe
     const bloqueTraducido = textoProcesado[j++] ?? ''
     const lineasTraducidas = bloqueTraducido.split('\n')
-    resultado.push(...lineasTraducidas.map(l => l.trim()))
+    resultado.push(...lineasTraducidas.map((l) => l.trim()))
 
     // Línea vacía si corresponde
     if (i < lineasOriginales.length && lineasOriginales[i].trim() === '') {
@@ -325,12 +363,10 @@ export default function Home() {
         state: 'PROCESSING'
       })
       if (element.filename.endsWith('.srt')) {
-
         const parsetString = element.split?.join(' ||| ')
         let data = ''
         const currentKey = apiKeys?.find((k) => k.isDefault === true)
-        if (currentKey?.family === "deepseek") {
-
+        if (currentKey?.family === 'deepseek') {
           const rs = await axios.post('/api/translate', {
             content: parsetString,
             format: 'srt'
@@ -340,9 +376,9 @@ export default function Home() {
           data = await translateSub(parsetString ?? '')
         }
 
-
-
-        const restored = data.split(/\s*\|\|\|\s*/).map((parte: any) => parte.trim())
+        const restored = data
+          .split(/\s*\|\|\|\s*/)
+          .map((parte: any) => parte.trim())
         updateSubFileState({
           ...element,
           state: 'DONE',
@@ -352,15 +388,28 @@ export default function Home() {
         const parsetString = element.split?.join(' ||| ')
         let data = ''
         const currentKey = apiKeys?.find((k) => k.isDefault === true)
-        if (currentKey?.family === "deepseek") {
-          const rs = await axios.post('/api/translate', { content: parsetString, format: 'ass' })
+        if (currentKey?.family === 'deepseek') {
+          const rs = await axios.post('/api/translate', {
+            content: parsetString,
+            format: 'ass'
+          })
+          data = rs.data
+        } else if (
+          currentKey?.family === 'moonshot' ||
+          currentKey?.family === 'kimi'
+        ) {
+            const rs = await axios.post('/api/translate', {
+            content: await generatePayloadKimi(parsetString ?? ''),
+            format: 'ass'
+          })
           data = rs.data
         } else {
           data = await translateSub(parsetString ?? '')
         }
 
-
-        const restored = data.split(/\s*\|\|\|\s*/).map((parte: any) => parte.trim())
+        const restored = data
+          .split(/\s*\|\|\|\s*/)
+          .map((parte: any) => parte.trim())
         updateSubFileState({
           ...element,
           state: 'DONE',
@@ -409,7 +458,7 @@ export default function Home() {
       const filename = `${file.filename.replaceAll('.srt', '')}_es.ass`
       const restored = restaurarNumerosYTiempos(
         file.splitTranslated ?? [],
-        file.original,
+        file.original
       )
       triggerFileDownload(filename, restored)
     } else {
@@ -532,7 +581,7 @@ export default function Home() {
                       {file.state === 'DONE' && (
                         <div className='flex items-center justify-center'>
                           {file.split.length ===
-                            file.splitTranslated?.length ? (
+                          file.splitTranslated?.length ? (
                             <button
                               className='px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700'
                               onClick={() => {
@@ -542,9 +591,12 @@ export default function Home() {
                               Descargar
                             </button>
                           ) : (
-                            <button className='relative group px-4 py-2 rounded-lg text-white bg-yellow-600 hover:bg-yellow-700' onClick={() => {
-                              download(file)
-                            }}>
+                            <button
+                              className='relative group px-4 py-2 rounded-lg text-white bg-yellow-600 hover:bg-yellow-700'
+                              onClick={() => {
+                                download(file)
+                              }}
+                            >
                               Descargar
                               <span className='absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 text-xs text-white bg-gray-800 rounded-lg'>
                                 Primary Button
@@ -575,7 +627,8 @@ export default function Home() {
                 className='p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 dark:bg-gray-800 dark:text-blue-400'
                 role='alert'
               >
-                <span className='font-medium'>No hay ApiKey Configurado</span> <Link href={"/apikey"}>Configura tu apiKey aquí</Link>
+                <span className='font-medium'>No hay ApiKey Configurado</span>{' '}
+                <Link href={'/apikey'}>Configura tu apiKey aquí</Link>
               </div>
             </div>
           </div>

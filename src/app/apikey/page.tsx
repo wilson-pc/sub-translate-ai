@@ -54,6 +54,7 @@ export default function Edit() {
                     Gemini
                   </option>
                   <option value='deepseek'>deepseek</option>
+                    <option value='kimi'>kimi</option>
                 </select>
               </div>
               <div>
