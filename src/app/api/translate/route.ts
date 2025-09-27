@@ -1,51 +1,69 @@
-import OpenAI from 'openai'
+import OpenAI from "openai";
 
 type RequestBody = {
-  content: string
-  format: string
-}
+  content: string;
+  format: string;
+};
 const openai = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY
-})
+  baseURL: "https://api.deepseek.com",
+  apiKey: process.env.DEEPSEEK_API_KEY,
+});
+
+async function getFullResponse(prompt: string) {
+  const response = await openai.chat.completions.create({
+    model: "deepseek-chat",
+    stream: false,
+    messages: [
+      {
+        role: "system",
+        content: "Eres un traductor de subtítulos de archivos de video",
+      },
+      {
+        role: "user",
+        content: `Traduce este subtítulo a español latinoamericano. Los diálogos están separados por "|||", los dialogos estan extraidos de archivos .srt y .ass por lo que es muy importante conservar el mismo nuemoro de dialoglos para poder restaurarlos despues
+                             
+           ${prompt}
+           
+           regresa la traduccion completa entre ---`,
+      },
+    ],
+  });
+
+  const choice = response.choices[0];
+  console.log(choice);
+  const text = choice?.message.content ?? "";
+
+  return text;
+}
+function chunkByDelimiter(str: string, delimiter = "|||", size = 300) {
+  // Dividimos en partes
+  const parts = str.split(delimiter);
+  const chunks = [];
+
+  for (let i = 0; i < parts.length; i += size) {
+    // Tomamos "size" partes y las volvemos a unir con el delimitador
+    chunks.push(parts.slice(i, i + size).join(delimiter));
+  }
+
+  return chunks;
+}
 
 export async function POST(req: Request) {
-  const { content, format }: RequestBody = await req.json()
-  const characters = content.length
-  const tokens = Math.ceil(characters / 4)
+  const { content }: RequestBody = await req.json();
+  const characters = content.length;
+  const tokens = Math.ceil(characters / 4);
 
-  if (format === 'srt') {
-    const completion = await openai.chat.completions.create({
-      model: 'deepseek-chat',
-      messages: [
-        { role: "system", content: "Eres un traductor de subtítulos que convierte los diálogos al español latinoamericano manteniendo el formato original." },
-        {
-          role: "user", content: `Traduce este subtítulo a español latinoamericano. Los diálogos están separados por "|||"
-                             
-           ${content}
-           
-        Trata de mantener el formato y conserva el contexto al traducir. Si hay palabras incompletas, símbolos o caracteres raros, déjalos así y no los borres. tiene que haber el mismo numero de diálogos separados por ||| al responder` }
-      ]
-    });
-    const rs = completion.choices[0].message.content?.trim()
-
-    return new Response(rs)
-  } else {
-
-    const completion = await openai.chat.completions.create({
-      model: 'deepseek-chat',
-      messages: [
-        { role: "system", content: "Eres un traductor de subtítulos que convierte los diálogos al español latinoamericano manteniendo el formato original." },
-        {
-          role: "user", content: `Traduce este subtítulo a español latinoamericano. Los diálogos están separados por "|||"
-                             
-           ${content}
-           
-        Trata de mantener el formato y conserva el contexto al traducir. Si hay palabras incompletas, símbolos o caracteres raros, déjalos así y no los borres. tiene que haber el mismo numero de diálogos separados por ||| al responder` }
-      ]
-    });
-    const rs = completion.choices[0].message.content?.trim()
-
-    return new Response(rs)
+  let transpalted: string = "";
+  const chunks = chunkByDelimiter(content, "|||", 300);
+  console.log(chunks);
+  for (const element of chunks) {
+    const resp = await getFullResponse(element.trim());
+    console.log(resp);
+    transpalted +=
+      transpalted.length > 0
+        ? "||| " + resp.split("---")[1]?.trim().split("---")[0]?.trim()
+        : resp.split("---")[1]?.trim().split("---")[0]?.trim();
   }
+
+  return new Response(transpalted);
 }
