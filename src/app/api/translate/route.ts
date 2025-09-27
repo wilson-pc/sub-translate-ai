@@ -50,8 +50,6 @@ function chunkByDelimiter(str: string, delimiter = "|||", size = 300) {
 
 export async function POST(req: Request) {
   const { content }: RequestBody = await req.json();
-  const characters = content.length;
-  const tokens = Math.ceil(characters / 4);
 
   let transpalted: string = "";
   const chunks = chunkByDelimiter(content, "|||", 300);

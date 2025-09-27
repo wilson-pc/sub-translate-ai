@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 
 //ciertamente has cuidado bien
 "use client";
@@ -27,6 +26,38 @@ const model = genAI.getGenerativeModel({
 
 function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function generatePayloadKimi(text: string) {
+  const param = {
+    config: {
+      baseURL: "https://api.moonshot.cn/v1",
+      apiKey: localStorage.getItem("apiKey") ?? "",
+    },
+    completion: {
+      model: localStorage.getItem("model") ?? "",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an experienced semantic translator, specialized in creating .ass files.  Always return the full translation. If the response is truncated, continue from where it was left off.",
+        },
+        {
+          role: "user",
+          content: `
+        translate this subtitle to spanish latin american. the dialogues are separated by "|||"
+        
+        ${text}
+        
+        keep the original format and keep the context when translating. if there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.  
+        **VERY IMPORTANT: Do not remove any dialogue. Each dialogue in the original text must have its corresponding translation. Dialogues cannot be added or removed. Make sure the translation maintains the same number of dialogues as the original text.**  
+        **Dialogues cannot be removed.**
+        `,
+        },
+      ],
+    },
+  };
+
+  return encrypt(JSON.stringify(param));
 }
 
 async function translateSub(text: string) {
