@@ -30,7 +30,6 @@ async function getFullResponse(prompt: string) {
   });
 
   const choice = response.choices[0];
-  console.log(choice);
   const text = choice?.message.content ?? "";
 
   return text;
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
 
   let transpalted: string = "";
   const chunks = chunkByDelimiter(content, "|||", 300);
-  console.log(chunks);
   for (const element of chunks) {
     const resp = await getFullResponse(element.trim());
     console.log(resp);
