@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   //const tokens = Math.ceil(characters / 4)
 
   if (format === "srt") {
-    return "";
+    return new Response("");
   } else {
     let finalResponse = "";
 
