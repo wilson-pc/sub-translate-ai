@@ -1,4 +1,4 @@
-import { google } from "@ai-sdk/google";
+import { GoogleGenAI } from "@google/genai";
 import { generateText } from "ai";
 
 type RequestBody = {
@@ -11,24 +11,18 @@ export async function POST(req: Request) {
   //const characters = content.length
   //const tokens = Math.ceil(characters / 4)
 
-  let finalResponse = "";
+  const genAI = new GoogleGenAI({});
+  const response = await genAI.models.generateContent({
+    model: "gemini-2.0-flash-exp",
+    contents: `Translate this subtitle into Latin American Spanish. The dialogues come from an SRT file, and they are separated by "|||".  
 
-  const { text: translatedText } = await generateText({
-    model: google("gemini-2.0-flash-exp"),
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are an experienced semantic translator, specialized in creating .ass files.  Always return the full translation. If the response is truncated, continue from where it was left off.",
-      },
-      {
-        role: "user",
-        content: `Translate this to Spanish: 
-            ${content}`,
-      },
-    ],
+${content}  
+
+Maintain the context while translating. If there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.  
+**VERY IMPORTANT: Do not remove any dialogue. Each dialogue in the original text must have its corresponding translation. Dialogues cannot be added or removed**  
+**do not remove the separators |||**`,
   });
-  finalResponse += translatedText;
+  const finalResponse = response.text ?? "";
 
   return new Response(finalResponse);
 }
