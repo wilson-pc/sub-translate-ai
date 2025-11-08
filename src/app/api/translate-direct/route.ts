@@ -1,5 +1,4 @@
 import { GoogleGenAI } from "@google/genai";
-import { generateText } from "ai";
 
 type RequestBody = {
   content: string;
