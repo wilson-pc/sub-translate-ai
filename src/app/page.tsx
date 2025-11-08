@@ -7,7 +7,7 @@ import { db } from "@/db/db";
 import { SubFile } from "@/models";
 import { subFileAtom, updateSubFileStateAtom } from "@/store";
 import { restoreDialogsToASS, triggerFileDownload } from "@/utils/ass";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useAtom } from "jotai/react";
 import Image from "next/image";
@@ -19,26 +19,24 @@ const head =
   typeof window !== "undefined" ? localStorage.getItem("apiKey") : "fgvr";
 const modele =
   typeof window !== "undefined" ? localStorage.getItem("model") : "fiewio";
-const genAI = new GoogleGenerativeAI(head ?? "");
-const model = genAI.getGenerativeModel({
-  model: modele ?? "grtegt",
-});
+const genAI = new GoogleGenAI({ apiKey: head ?? "" });
 
 function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function translateSub(text: string) {
-  const result = await model.generateContent(
-    `Translate this subtitle into Latin American Spanish. The dialogues come from an SRT file, and they are separated by "|||".  
+  const response = await genAI.models.generateContent({
+    model: modele ?? "grtegt",
+    contents: `Translate this subtitle into Latin American Spanish. The dialogues come from an SRT file, and they are separated by "|||".  
 
 ${text}  
 
 Maintain the context while translating. If there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.  
 **VERY IMPORTANT: Do not remove any dialogue. Each dialogue in the original text must have its corresponding translation. Dialogues cannot be added or removed**  
-**do not remove the separators |||**`
-  );
-  return result.response.text();
+**do not remove the separators |||**`,
+  });
+  return response.text ?? "";
 }
 
 async function translateSubDeepseek(text: string) {
@@ -72,36 +70,6 @@ async function translateSubDeepseek(text: string) {
   );
   const content = data.choices[-1].message.content?.trim() || "";
   return content;
-}
-
-async function trAss(text: string) {
-  const result = await model.generateContent(
-    `Translate this subtitle into Latin American Spanish. The dialogues is in .ass format.  
-
-${text}  
-
-Maintain the context while translating. If there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.`
-  );
-  return result.response.text();
-}
-async function translateSubByDialog(text: string) {
-  const dialogs = text.split("@");
-  const dialogsTranslated = [];
-
-  for (const element of dialogs) {
-    const result = await model.generateContent(
-      `Traduce el siguiente dialogo, viene de un archivo de subtitulo
-                                 
-               ${element}
-               
-        Si hay palabras incompletas, símbolos o caracteres raros, déjalos así y no los borres`
-    );
-    const response = result.response.text();
-    dialogsTranslated.push(response);
-    await timeout(10000);
-  }
-
-  return dialogsTranslated.join("@");
 }
 
 const readFileContents = async (file: File): Promise<string> => {
