@@ -15,6 +15,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
+import {
+  deduplicateDialogsGemini,
+  restoreDialogsGemini,
+} from "@/utils/removeDuplicate";
 const head =
   typeof window !== "undefined" ? localStorage.getItem("apiKey") : "fgvr";
 const modele =
@@ -24,17 +28,112 @@ const genAI = new GoogleGenAI({ apiKey: head ?? "" });
 function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+/**
+ * Elimina diálogos duplicados y genera un mapa para restaurarlos después
+ */
+type DedupOptions = {
+  normalizeCase?: boolean; // convertir a minúsculas para comparar
+  trim?: boolean; // quitar espacios al inicio/fin
+  collapseWhitespace?: boolean; // colapsar múltiples espacios a uno
+  removeAssTags?: boolean; // eliminar override tags de .ass: {\...}
+};
 
+type DedupResult = {
+  uniqueDialogs: string[]; // textos únicos (en orden de primera aparición)
+  indexMap: number[]; // para cada diálogo original -> índice en uniqueDialogs
+  counts: number[]; // counts[i] = cuántas veces aparece uniqueDialogs[i]
+  restore: (translatedUnique: string[]) => string[]; // restaura array del tamaño original
+  debugReport: () => {
+    uniqueCount: number;
+    originalCount: number;
+    counts: number[];
+  };
+};
+function normalizeText(s: string, opts: DedupOptions): string {
+  let out = s;
+  if (opts.removeAssTags) {
+    // elimina tags tipo {\...}
+    out = out.replace(/\{\\.*?\}/g, "");
+  }
+  if (opts.trim) out = out.trim();
+  if (opts.collapseWhitespace) out = out.replace(/\s+/g, " ");
+  if (opts.normalizeCase) out = out.toLowerCase();
+  return out;
+}
+export function deduplicateDialogs(
+  dialogs: string[],
+  opts: Partial<DedupOptions> = {}
+): DedupResult {
+  const options: DedupOptions = {
+    normalizeCase: true,
+    trim: true,
+    collapseWhitespace: true,
+    removeAssTags: true,
+    ...opts,
+  };
+
+  const seen = new Map<string, number>(); // normalized -> index en uniqueDialogs
+  const uniqueDialogs: string[] = [];
+  const indexMap: number[] = [];
+  const counts: number[] = [];
+
+  dialogs.forEach((d, i) => {
+    const key = normalizeText(d, options);
+    if (!seen.has(key)) {
+      const idx = uniqueDialogs.length;
+      seen.set(key, idx);
+      uniqueDialogs.push(d); // guardamos el texto ORIGINAL de la primera aparición
+      counts.push(0);
+    }
+    const idx = seen.get(key)!;
+    indexMap.push(idx);
+    counts[idx] += 1;
+  });
+
+  function restore(translatedUnique: string[]): string[] {
+    // Validaciones útiles para evitar malos mapeos (esto es lo que probablemente falla en tu caso)
+    if (!Array.isArray(translatedUnique)) {
+      throw new Error("restore: esperado un array de traducciones.");
+    }
+
+    // reconstruimos el array original usando indexMap
+    return indexMap.map((uniIdx) => translatedUnique[uniIdx]);
+  }
+  function debugReport() {
+    return {
+      uniqueCount: uniqueDialogs.length,
+      originalCount: dialogs.length,
+      counts,
+    };
+  }
+
+  return { uniqueDialogs, indexMap, counts, restore, debugReport };
+}
 async function translateSub(text: string) {
   const response = await genAI.models.generateContent({
     model: modele ?? "grtegt",
-    contents: `Translate this subtitle into Latin American Spanish. The dialogues come from an SRT file, and they are separated by "|||".  
+    contents: `You are a translation assistant. Translate the following dialogues into **Latin American Spanish**.
 
-${text}  
+The input text comes from an SRT subtitle file.
+Each dialogue is separated by the token \`|||\`.
 
-Maintain the context while translating. If there are incomplete words, symbols, or strange characters, leave them as they are and do not remove them.  
-**VERY IMPORTANT: Do not remove any dialogue. Each dialogue in the original text must have its corresponding translation. Dialogues cannot be added or removed**  
-**do not remove the separators |||**`,
+---
+
+### RULES (Follow STRICTLY):
+1. ⚠️ **NEVER** remove, merge, or split dialogues.  
+   - The number of "|||" separators in the output MUST be **exactly the same** as in the input.  
+   - Each dialogue in the input corresponds to **exactly one** dialogue in the output, in the same order.
+2. Do NOT translate or remove the separators (\`|||\`).
+3. If a dialogue is empty, strange, cut off, or unreadable, **copy it as-is**.
+4. Preserve punctuation, symbols, and line breaks inside each dialogue.
+5. Do NOT add comments, explanations, or extra text.
+6. Return ONLY the translated dialogues with separators, nothing else.
+
+---
+
+Now translate the text below following ALL the rules above:
+
+${text}`,
   });
   return response.text ?? "";
 }
@@ -365,7 +464,9 @@ export default function Home() {
           splitTranslated: restored,
         });
       } else {
-        const parsetString = file.split?.join(" ||| ");
+        const { deduplicatedArray, originalToPatternMap, uniqueDialogs } =
+          deduplicateDialogsGemini(file.split);
+        const parsetString = uniqueDialogs?.join(" ||| ");
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
         if (currentKey?.family === "deepseek") {
@@ -378,9 +479,14 @@ export default function Home() {
           data = await translateSub(parsetString ?? "");
         }
 
-        const restored = data
+        const restoredTranslated = data
           .split(/\s*\|\|\|\s*/)
           .map((parte: any) => parte.trim());
+        const restored = restoreDialogsGemini(
+          deduplicatedArray,
+          originalToPatternMap,
+          restoredTranslated
+        );
         updateSubFileState({
           ...file,
           state: "DONE",
@@ -390,6 +496,7 @@ export default function Home() {
         // console.log(textoModificado2)
       }
     } catch (error) {
+      console.log(error);
       updateSubFileState({
         ...file,
         state: "ERROR",
