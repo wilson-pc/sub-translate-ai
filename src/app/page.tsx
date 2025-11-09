@@ -60,7 +60,7 @@ function normalizeText(s: string, opts: DedupOptions): string {
   if (opts.normalizeCase) out = out.toLowerCase();
   return out;
 }
-export function deduplicateDialogs(
+function deduplicateDialogs(
   dialogs: string[],
   opts: Partial<DedupOptions> = {}
 ): DedupResult {
