@@ -105,11 +105,9 @@ export function restoreDialogsGemini(
       const translation = patternToTranslationMap.get(item);
       if (translation === undefined) {
         // Esto no debería pasar si la lógica es correcta.
-        throw new Error(
-          `Patrón no encontrado en el mapa de traducción: ${item}`
-        );
+        console.error(`Patrón no encontrado en el mapa de traducción: ${item}`);
       }
-      restoredArray.push(translation);
+      restoredArray.push(translation ?? "");
     } else {
       // Este caso es de resguardo si por error se introdujo un diálogo no-patrón.
       // En la lógica de `deduplicateDialogs`, esto no debería ocurrir.

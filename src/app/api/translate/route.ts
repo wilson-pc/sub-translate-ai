@@ -16,15 +16,32 @@ async function getFullResponse(prompt: string) {
     messages: [
       {
         role: "system",
-        content: "Eres un traductor de subtítulos de archivos de video",
+        content: `You are a translation assistant. Translate the following dialogues into **Latin American Spanish**
+                  
+                  The input text comes from an SRT subtitle file.
+                  Each dialogue is separated by the token \`|||\`.
+
+                  ### RULES (Follow STRICTLY):
+                  1. ⚠️ **NEVER** remove, merge, or split dialogues.  
+                    - The number of "|||" separators in the output MUST be **exactly the same** as in the input.  
+                    - Each dialogue in the input corresponds to **exactly one** dialogue in the output, in the same order.
+                  2. Do NOT translate or remove the separators (\`|||\`).
+                  3. If a dialogue is empty, strange, cut off, or unreadable, **copy it as-is**.
+                  4. Preserve punctuation, symbols, and line breaks inside each dialogue.
+                  5. Do NOT add comments, explanations, or extra text.
+                  6. Return ONLY the translated dialogues with separators, nothing else.
+                  7. Return the complete translation between --- to be able to extract the text with a split in js
+
+                  Now translate the text below following ALL the rules above:
+`,
       },
       {
         role: "user",
-        content: `Traduce este subtítulo a español latinoamericano. Los diálogos están separados por "|||", los dialogos estan extraidos de archivos .srt y .ass por lo que es muy importante conservar el mismo nuemoro de dialoglos para poder restaurarlos despues
+        content: `Translate this subtitle to Spanish Latin America
                              
            ${prompt}
-           
-           regresa la traduccion completa entre ---`,
+
+           `,
       },
     ],
   });
@@ -54,7 +71,7 @@ export async function POST(req: Request) {
   const chunks = chunkByDelimiter(content, "|||", 300);
   for (const element of chunks) {
     const resp = await getFullResponse(element.trim());
-    console.log(resp);
+
     transpalted +=
       transpalted.length > 0
         ? "||| " + resp.split("---")[1]?.trim().split("---")[0]?.trim()
