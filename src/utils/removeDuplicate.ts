@@ -1,3 +1,40 @@
+export function filterDrawingCommands(dialogs: string[]): string[] {
+  const isCmd = (t: string) => /^[mlb]$/i.test(t);
+  const isNum = (t: string) => /^-?\d+$/.test(t);
+
+  function isDrawingCommandLine(line: string): boolean {
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+
+    let sawCommand = false;
+
+    for (const t of tokens) {
+      if (isCmd(t)) {
+        sawCommand = true; // vimos al menos un comando
+      } else if (!isNum(t)) {
+        return false; // letra extraña → inválido
+      }
+    }
+
+    return sawCommand; // válido mientras solo haya cmds + números
+  }
+
+  return dialogs.map((dialog, index) =>
+    isDrawingCommandLine(dialog) ? `{{${index}}}` : dialog
+  );
+}
+
+export function restoreDrawingCommands(
+  filtered: string[],
+  original: string[]
+): string[] {
+  return filtered.map((dialog) =>
+    dialog.replace(
+      /\{\{(\d+)\}\}/g,
+      (_, index) => original[Number(index)] ?? ""
+    )
+  );
+}
 interface DeduplicationResult {
   deduplicatedArray: string[];
   originalToPatternMap: Map<string, string>;
@@ -104,13 +141,10 @@ export function restoreDialogsGemini(
       // Es un patrón. Buscamos su traducción.
       const translation = patternToTranslationMap.get(item);
       if (translation === undefined) {
-        // Esto no debería pasar si la lógica es correcta.
         console.error(`Patrón no encontrado en el mapa de traducción: ${item}`);
       }
       restoredArray.push(translation ?? "");
     } else {
-      // Este caso es de resguardo si por error se introdujo un diálogo no-patrón.
-      // En la lógica de `deduplicateDialogs`, esto no debería ocurrir.
       restoredArray.push(item);
     }
   }

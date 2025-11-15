@@ -17,7 +17,9 @@ import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import {
   deduplicateDialogsGemini,
+  filterDrawingCommands,
   restoreDialogsGemini,
+  restoreDrawingCommands,
 } from "@/utils/removeDuplicate";
 const head =
   typeof window !== "undefined" ? localStorage.getItem("apiKey") : "fgvr";
@@ -128,6 +130,7 @@ Each dialogue is separated by the token \`|||\`.
 4. Preserve punctuation, symbols, and line breaks inside each dialogue.
 5. Do NOT add comments, explanations, or extra text.
 6. Return ONLY the translated dialogues with separators, nothing else.
+7. ignore drawing commands {{index}}
 
 ---
 
@@ -466,7 +469,9 @@ export default function Home() {
       } else {
         const { deduplicatedArray, originalToPatternMap, uniqueDialogs } =
           deduplicateDialogsGemini(file.split);
-        const parsetString = uniqueDialogs?.join(" ||| ");
+        const parsetString =
+          filterDrawingCommands(uniqueDialogs)?.join(" ||| ");
+
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
         if (currentKey?.family === "deepseek") {
@@ -482,10 +487,11 @@ export default function Home() {
         const restoredTranslated = data
           .split(/\s*\|\|\|\s*/)
           .map((parte: any) => parte.trim());
+
         const restored = restoreDialogsGemini(
           deduplicatedArray,
           originalToPatternMap,
-          restoredTranslated
+          restoreDrawingCommands(restoredTranslated, uniqueDialogs)
         );
         updateSubFileState({
           ...file,
