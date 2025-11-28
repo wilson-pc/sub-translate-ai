@@ -131,7 +131,9 @@ Each dialogue is separated by the token \`|||\`.
 5. Do NOT add comments, explanations, or extra text.
 6. Return ONLY the translated dialogues with separators, nothing else.
 7. ignore drawing commands {{index}}
+8. Ignore drawing commands, return it as is [[id:index]]
 
+  Remember, you're translating movies or TV episodes, so don't try to change or minimize insults or bad words, as they are important to the plot.
 ---
 
 Now translate the text below following ALL the rules above:
@@ -467,10 +469,12 @@ export default function Home() {
           splitTranslated: restored,
         });
       } else {
-        const { deduplicatedArray, originalToPatternMap, uniqueDialogs } =
-          deduplicateDialogsGemini(file.split);
-        const parsetString =
-          filterDrawingCommands(uniqueDialogs)?.join(" ||| ");
+        const {
+          deduplicatedStructure, // El "esqueleto" del archivo con los IDs
+          linesToTranslate, // Array tipo ["@@DUP:1@@ Hola", "@@DUP:2@@ Mundo"]
+          patternToOriginalMap, // Mapa de respaldo
+        } = deduplicateDialogsGemini(file.split);
+        const parsetString = linesToTranslate.join(" ||| "); // filterDrawingCommands(uniqueDialogs)?.join(" ||| ");
 
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
@@ -489,9 +493,9 @@ export default function Home() {
           .map((parte: any) => parte.trim());
 
         const restored = restoreDialogsGemini(
-          deduplicatedArray,
-          originalToPatternMap,
-          restoreDrawingCommands(restoredTranslated, uniqueDialogs)
+          deduplicatedStructure,
+          restoredTranslated,
+          patternToOriginalMap
         );
         updateSubFileState({
           ...file,

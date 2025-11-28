@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import OpenAI from "openai";
 const openai = new OpenAI({
   baseURL: "https://api.moonshot.ai/v1",
@@ -17,4 +19,25 @@ const ddfeee = await openai.chat.completions.create({
   temperature: 0.6,
 });
 
-console.log(ddfeee);
+console.log(ddfeee.choices[0].message.content);
+
+/*
+async function getResponse(prompt: string) {
+  const response = await axios.post(
+    `https://api.cloudflare.com/client/v4/accounts/47d18f9f305f78eac145f550d627be87/ai/v1/responses`,
+    {
+      model: "@cf/openai/gpt-oss-120b",
+      input: "Where did the phrase Hello World come from",
+      instructions: "You are a concise assistant.",
+    },
+    {
+      headers: {
+        Authorization: `Bearer 7dvtGrb29gxQ64iuTwlL6uoxLum_7G0lDCHSem7t`,
+      },
+    }
+  );
+  console.log(response.data.output[0].content);
+}
+
+getResponse("Hello World").then();
+*/

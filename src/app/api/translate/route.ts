@@ -2,16 +2,23 @@ import OpenAI from "openai";
 
 type RequestBody = {
   content: string;
-  format: string;
+  family: string;
+  model: string;
+  key: string;
 };
-const openai = new OpenAI({
-  baseURL: "https://api.deepseek.com",
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
 
-async function getFullResponse(prompt: string) {
+async function getFullResponse(
+  prompt: string,
+  url: string,
+  key: string,
+  model: string
+) {
+  const openai = new OpenAI({
+    baseURL: url,
+    apiKey: key,
+  });
   const response = await openai.chat.completions.create({
-    model: "deepseek-chat",
+    model: model,
     stream: false,
     messages: [
       {
@@ -20,6 +27,7 @@ async function getFullResponse(prompt: string) {
                   
                   The input text comes from an SRT subtitle file.
                   Each dialogue is separated by the token \`|||\`.
+                  Remember, you're translating movies or TV episodes, so don't try to change or minimize insults or bad words, as they are important to the plot.
 
                   ### RULES (Follow STRICTLY):
                   1. ⚠️ **NEVER** remove, merge, or split dialogues.  
@@ -30,7 +38,10 @@ async function getFullResponse(prompt: string) {
                   4. Preserve punctuation, symbols, and line breaks inside each dialogue.
                   5. Do NOT add comments, explanations, or extra text.
                   6. Return ONLY the translated dialogues with separators, nothing else.
-                  7. Return the complete translation between --- to be able to extract the text with a split in js
+                  7. ignore drawing commands {{index}}
+                  8. Ignore drawing commands, return it as is [[id:index]]
+                  9. Return the complete translation between --- to be able to extract the text with a split in js
+                  
 
                   Now translate the text below following ALL the rules above:
 `,
@@ -69,8 +80,16 @@ export async function POST(req: Request) {
 
   let transpalted: string = "";
   const chunks = chunkByDelimiter(content, "|||", 300);
+  //deepseek
+  //process.env.DEEPSEEK_API_KEY
+  //https://api.deepseek.com
   for (const element of chunks) {
-    const resp = await getFullResponse(element.trim());
+    const resp = await getFullResponse(
+      element.trim(),
+      "https://api.moonshot.ai/v1",
+      "sk-qA63w5HGmxef6lHXDj9LoBXwa5IuVfsdpVUIzhFCvcQ8TYac",
+      "kimi-k2-turbo-preview"
+    );
 
     transpalted +=
       transpalted.length > 0

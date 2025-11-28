@@ -35,115 +35,128 @@ export function restoreDrawingCommands(
     )
   );
 }
-interface DeduplicationResult {
-  deduplicatedArray: string[];
-  originalToPatternMap: Map<string, string>;
-  uniqueDialogs: string[];
+
+export interface DeduplicationResult {
+  deduplicatedStructure: string[]; // Estructura: [ "[[id:1]]", "[[id:2]]", ... ]
+  linesToTranslate: string[]; // Para la IA: [ "[[id:1]] Hola", "[[id:2]] Mundo" ]
+  patternToOriginalMap: Map<string, string>; // Respaldo: "[[id:1]]" -> "Hola"
 }
 
-/**
- * Reemplaza los diálogos repetidos con un patrón de marcador para ahorrar tokens
- * de traducción.
- * * @param dialogs Array de strings donde cada string es un diálogo.
- * @returns Un objeto con el array modificado, los diálogos únicos y el mapa de patrones.
- */
 export function deduplicateDialogsGemini(
   dialogs: string[]
 ): DeduplicationResult {
-  // Usamos un Map para rastrear diálogos únicos y su patrón de reemplazo.
-  // clave: el diálogo original (string)
-  // valor: el patrón de reemplazo (string, ej: '@@DUP:1@@')
-  const originalToPatternMap = new Map<string, string>();
-
-  // Usamos un Set para asegurar la unicidad de los diálogos que se enviarán a traducir.
-  const uniqueDialogsSet = new Set<string>();
+  const textToPatternMap = new Map<string, string>();
+  const patternToOriginalMap = new Map<string, string>();
+  const deduplicatedStructure: string[] = [];
+  const linesToTranslate: string[] = [];
 
   let patternCounter = 1;
-  const deduplicatedArray: string[] = [];
 
   for (const dialog of dialogs) {
-    // Normalizamos o limpiamos el diálogo si fuera necesario, aunque por simplicidad
-    // aquí usamos el diálogo tal cual.
     const normalizedDialog = dialog.trim();
 
-    if (originalToPatternMap.has(normalizedDialog)) {
-      // El diálogo ya ha sido visto. Usamos su patrón existente.
-      const pattern = originalToPatternMap.get(normalizedDialog)!;
-      deduplicatedArray.push(pattern);
+    // Mantener líneas vacías si existen
+    if (!normalizedDialog) {
+      deduplicatedStructure.push("");
+      continue;
+    }
+
+    if (textToPatternMap.has(normalizedDialog)) {
+      // Si ya existe, reutilizamos el ID
+      const pattern = textToPatternMap.get(normalizedDialog)!;
+      deduplicatedStructure.push(pattern);
     } else {
-      // Es un diálogo nuevo.
+      // Generamos nuevo patrón estilo [[id:N]]
+      const pattern = `[[id:${patternCounter}]]`;
 
-      // 1. Lo agregamos al conjunto de diálogos únicos para traducir.
-      uniqueDialogsSet.add(normalizedDialog);
+      textToPatternMap.set(normalizedDialog, pattern);
+      patternToOriginalMap.set(pattern, normalizedDialog);
 
-      // 2. Creamos un patrón de reemplazo.
-      // Siempre se reemplaza por el patrón, incluso la primera aparición,
-      // para que todos los diálogos únicos para traducción estén en `uniqueDialogs`.
-      const pattern = `@@DUP:${patternCounter}@@`;
-      originalToPatternMap.set(normalizedDialog, pattern);
+      deduplicatedStructure.push(pattern);
 
-      // 3. Agregamos el patrón al array final.
-      deduplicatedArray.push(pattern);
+      // Preparamos la línea para la IA con un espacio simple
+      linesToTranslate.push(`${pattern} ${normalizedDialog}`);
 
       patternCounter++;
     }
   }
 
-  // Extraemos los diálogos únicos del Set.
-  const uniqueDialogs = Array.from(uniqueDialogsSet);
-
   return {
-    deduplicatedArray,
-    originalToPatternMap,
-    uniqueDialogs,
+    deduplicatedStructure,
+    linesToTranslate,
+    patternToOriginalMap,
   };
 }
-// ---
-/**
- * Restaura los diálogos duplicados previamente reemplazados con el patrón.
- * * @param deduplicatedArray El array resultante de `deduplicateDialogs`, que contiene patrones ('@@DUP:N@@').
- * @param originalToPatternMap El Map generado por `deduplicateDialogs` (Original -> Patrón).
- * @param translatedDialogs Array de strings que son las traducciones de `uniqueDialogs`.
- * @returns El array final con todos los diálogos restaurados y traducidos.
- */
 export function restoreDialogsGemini(
-  deduplicatedArray: string[],
-  originalToPatternMap: Map<string, string>,
-  translatedDialogs: string[]
+  deduplicatedStructure: string[],
+  rawOutputFromAI: string | string[], // Aceptamos ambos
+  patternToOriginalMap: Map<string, string>
 ): string[] {
-  if (originalToPatternMap.size !== translatedDialogs.length) {
-    console.error(
-      "El número de diálogos únicos en el mapa no coincide con el número de diálogos traducidos."
-    );
-  }
-
-  // Paso 1: Invertir el mapa para ir del PATRÓN a la TRADUCCIÓN.
-  // Usamos el Map original (Original -> Patrón) para generar un nuevo Map (Patrón -> Traducción).
   const patternToTranslationMap = new Map<string, string>();
-  const originals = Array.from(originalToPatternMap.keys());
 
-  // Iteramos sobre los originales. La posición 'i' de 'originals' se corresponde con
-  // la posición 'i' de 'translatedDialogs'.
-  for (let i = 0; i < originals.length; i++) {
-    const originalDialog = originals[i];
-    const pattern = originalToPatternMap.get(originalDialog)!;
-    const translation = translatedDialogs[i];
-
-    patternToTranslationMap.set(pattern, translation);
+  // 1. Convertir todo a un solo string gigante normalizado
+  let bigString = "";
+  if (Array.isArray(rawOutputFromAI)) {
+    bigString = rawOutputFromAI.join("\n");
+  } else {
+    bigString = rawOutputFromAI;
   }
 
-  // Paso 2: Recorrer el array con patrones y reemplazar.
+  // Normalizar saltos de línea extraños que a veces meten las IAs
+  bigString = bigString.replace(/\r\n/g, "\n");
+
+  // 2. LA MAGIA: Dividir usando el ID como delimitador.
+  // El Regex captura el ID entero: [[ id : 123 ]]
+  // Al ponerlo entre paréntesis (), el .split() incluye el separador en el array resultante.
+  const splitRegex = /(\[\[\s*id:\s*\d+\s*\]\])/i;
+
+  const parts = bigString.split(splitRegex);
+
+  // parts se verá así:
+  // [ "", "[[id:1]]", " Texto trad 1\nSegunda linea", "[[id:2]]", " Texto 2" ]
+
+  let currentIdPattern: string | null = null;
+
+  for (const part of parts) {
+    // Verificamos si esta parte es un ID (ej: [[id:50]])
+    if (splitRegex.test(part)) {
+      // Normalizamos el ID para asegurarnos que coincida con nuestro mapa (sin espacios extra)
+      const match = part.match(/id:\s*(\d+)/i);
+      if (match) {
+        currentIdPattern = `[[id:${match[1]}]]`;
+      }
+    }
+    // Si no es un ID, y tenemos un ID pendiente, esto es el TEXTO (con saltos de línea y todo)
+    else if (currentIdPattern) {
+      let translation = part.trim();
+
+      // Limpieza defensiva: A veces la IA pone "[[id:1]] : Hola"
+      translation = translation.replace(/^[:.-]+/, "").trim();
+
+      if (translation) {
+        patternToTranslationMap.set(currentIdPattern, translation);
+      }
+
+      // Reseteamos para evitar asignar basura si algo falla
+      currentIdPattern = null;
+    }
+  }
+
+  // 3. Restaurar (igual que antes)
   const restoredArray: string[] = [];
 
-  for (const item of deduplicatedArray) {
-    // El patrón de búsqueda debe coincidir con el generado: @@DUP:1@@
-    if (item.startsWith("@@DUP:") && item.endsWith("@@")) {
-      // Es un patrón. Buscamos su traducción.
-      const translation = patternToTranslationMap.get(item);
+  for (const item of deduplicatedStructure) {
+    if (item.startsWith("[[id:") && item.endsWith("]]")) {
+      let translation = patternToTranslationMap.get(item);
+
       if (translation === undefined) {
-        console.error(`Patrón no encontrado en el mapa de traducción: ${item}`);
+        // Fallback al original si la IA falló
+        // (Aunque con este método fallará mucho menos)
+        console.warn(`⚠️ Missing translation for ${item}. Using original.`);
+        translation = patternToOriginalMap.get(item) || "";
       }
-      restoredArray.push(translation ?? "");
+
+      restoredArray.push(translation);
     } else {
       restoredArray.push(item);
     }
