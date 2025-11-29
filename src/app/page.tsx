@@ -542,7 +542,9 @@ export default function Home() {
         if (currentKey?.family !== "gemini") {
           const rs = await axios.post("/api/translate", {
             content: parsetString,
-            format: "ass",
+            family: currentKey?.family ?? "deepseek",
+            model: currentKey?.model ?? "deepseek-chat",
+            key: currentKey?.apiKey ?? "",
           });
           data = rs.data;
         } else {

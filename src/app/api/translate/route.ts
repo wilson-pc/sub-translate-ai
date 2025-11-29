@@ -9,7 +9,7 @@ type RequestBody = {
 
 const urls: Record<string, string> = {
   deepseek: "https://api.deepseek.com",
-  moonshot: "https://api.moonshot.ai/v1",
+  kimi: "https://api.moonshot.ai/v1",
 };
 
 async function getFullResponse(
@@ -18,10 +18,8 @@ async function getFullResponse(
   key: string,
   model: string
 ) {
-  const openai = new OpenAI({
-    baseURL: url,
-    apiKey: key,
-  });
+  console.log(url, key, model);
+
   const response = await openai.chat.completions.create({
     model: model,
     stream: false,
