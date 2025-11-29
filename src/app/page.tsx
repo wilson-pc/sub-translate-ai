@@ -16,7 +16,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useAtom } from "jotai/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import {
@@ -399,6 +399,8 @@ export default function Home() {
   const [getSubFileById] = useAtom(getSubFileByIdAtom);
   const [original, setOriginal] = useState("");
   const [newText, setNewText] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const apiKeys = useLiveQuery(() => db.apiKey.toArray());
 
@@ -433,6 +435,56 @@ export default function Home() {
       setFiles(lfiles);
     }
   };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+
+  const handleDropFiles = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles) {
+      const lfiles: SubFile[] = [];
+      for (const element of droppedFiles) {
+        const text = await readFileContents(element);
+        const id = uuidv4();
+        if (element.name.endsWith(".srt")) {
+          lfiles.push({
+            id: id,
+            filename: element.name,
+            original: text,
+            state: "PENDING",
+            split: quitarNumerosYTiempos(text),
+          });
+        } else {
+          lfiles.push({
+            id: id,
+            filename: element.name,
+            original: text,
+            state: "PENDING",
+            split: extractDialogsFromASS(text),
+          });
+        }
+      }
+
+      setFiles(lfiles);
+    }
+  };
+
+  const handleDragAreaClick = () => {
+    fileInputRef.current?.click();
+  };
   const translate = async () => {
     for (const element of files) {
       try {
@@ -456,10 +508,12 @@ export default function Home() {
         const parsetString = file.split?.join(" ||| ");
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
-        if (currentKey?.family === "deepseek") {
+        if (currentKey?.family !== "gemini") {
           const rs = await axios.post("/api/translate", {
             content: parsetString,
-            format: "srt",
+            family: currentKey?.family ?? "deepseek",
+            model: currentKey?.model ?? "deepseek-chat",
+            key: currentKey?.apiKey ?? "",
           });
           data = rs.data;
         } else {
@@ -485,7 +539,7 @@ export default function Home() {
 
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
-        if (currentKey?.family === "deepseek") {
+        if (currentKey?.family !== "gemini") {
           const rs = await axios.post("/api/translate", {
             content: parsetString,
             format: "ass",
@@ -565,8 +619,6 @@ export default function Home() {
     if (!file) {
       return;
     }
-    console.log(file);
-    return;
 
     if (file.filename.endsWith(".srt")) {
       const filename = `${file.filename.replaceAll(".srt", "")}_es.ass`;
@@ -585,21 +637,55 @@ export default function Home() {
     }
   };
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        {apiKeys && apiKeys?.length > 0 && (
+    <div className="grid grid-rows-[auto_1fr_20px] items-start justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
+      {apiKeys && apiKeys?.length > 0 && (
+        <div className="w-full flex justify-center">
           <div>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDropFiles}
+              onClick={handleDragAreaClick}
+              className={`w-full max-w-lg p-8 border-2 border-dashed rounded-lg text-center cursor-pointer transition-all ${
+                dragActive
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                  : "border-gray-300 hover:border-gray-400 dark:border-gray-600"
+              }`}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <svg
+                  className="w-12 h-12 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <p className="text-gray-600 dark:text-gray-300">
+                  Arrastra tus archivos aquí o haz click
+                </p>
+              </div>
+            </div>
             <input
+              ref={fileInputRef}
               type="file"
               id="file"
               name="file"
               multiple
               onChange={handleFileChange}
+              className="hidden"
             />
-            <div>
-              <br></br>
-            </div>
-
+          </div>
+        </div>
+      )}
+      <main className="flex flex-col gap-8 w-full items-center sm:items-start justify-start">
+        {apiKeys && apiKeys?.length > 0 && (
+          <div>
             <div className="inline-flex items-center">
               <label className="flex items-center cursor-pointer relative">
                 remplazar

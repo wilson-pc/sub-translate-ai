@@ -7,6 +7,11 @@ type RequestBody = {
   key: string;
 };
 
+const urls: Record<string, string> = {
+  deepseek: "https://api.deepseek.com",
+  moonshot: "https://api.moonshot.ai/v1",
+};
+
 async function getFullResponse(
   prompt: string,
   url: string,
@@ -76,7 +81,7 @@ function chunkByDelimiter(str: string, delimiter = "|||", size = 300) {
 }
 
 export async function POST(req: Request) {
-  const { content }: RequestBody = await req.json();
+  const { content, family, model, key }: RequestBody = await req.json();
 
   let transpalted: string = "";
   const chunks = chunkByDelimiter(content, "|||", 300);
@@ -86,9 +91,9 @@ export async function POST(req: Request) {
   for (const element of chunks) {
     const resp = await getFullResponse(
       element.trim(),
-      "https://api.moonshot.ai/v1",
-      "sk-qA63w5HGmxef6lHXDj9LoBXwa5IuVfsdpVUIzhFCvcQ8TYac",
-      "kimi-k2-turbo-preview"
+      urls[family],
+      key,
+      model
     );
 
     transpalted +=
