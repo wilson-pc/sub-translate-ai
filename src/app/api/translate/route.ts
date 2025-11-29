@@ -18,8 +18,10 @@ async function getFullResponse(
   key: string,
   model: string
 ) {
-  console.log(url, key, model);
-
+  const openai = new OpenAI({
+    baseURL: url,
+    apiKey: key,
+  });
   const response = await openai.chat.completions.create({
     model: model,
     stream: false,
