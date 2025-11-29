@@ -5,7 +5,11 @@
 "use client";
 import { db } from "@/db/db";
 import { SubFile } from "@/models";
-import { subFileAtom, updateSubFileStateAtom } from "@/store";
+import {
+  getSubFileByIdAtom,
+  subFileAtom,
+  updateSubFileStateAtom,
+} from "@/store";
 import { restoreDialogsToASS, triggerFileDownload } from "@/utils/ass";
 import { GoogleGenAI } from "@google/genai";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -21,6 +25,7 @@ import {
   restoreDialogsGemini,
   restoreDrawingCommands,
 } from "@/utils/removeDuplicate";
+import { database } from "@/store/atomWithIndexedDB";
 const head =
   typeof window !== "undefined" ? localStorage.getItem("apiKey") : "fgvr";
 const modele =
@@ -391,6 +396,7 @@ export default function Home() {
   const [files, setFiles] = useAtom(subFileAtom);
   const [replace, setReplace] = useState(false);
   const [, updateSubFileState] = useAtom(updateSubFileStateAtom);
+  const [getSubFileById] = useAtom(getSubFileByIdAtom);
   const [original, setOriginal] = useState("");
   const [newText, setNewText] = useState("");
 
@@ -474,7 +480,8 @@ export default function Home() {
           linesToTranslate, // Array tipo ["@@DUP:1@@ Hola", "@@DUP:2@@ Mundo"]
           patternToOriginalMap, // Mapa de respaldo
         } = deduplicateDialogsGemini(file.split);
-        const parsetString = linesToTranslate.join(" ||| "); // filterDrawingCommands(uniqueDialogs)?.join(" ||| ");
+        const cleaned = filterDrawingCommands(linesToTranslate);
+        const parsetString = cleaned.join(" ||| "); // filterDrawingCommands(uniqueDialogs)?.join(" ||| ");
 
         let data = "";
         const currentKey = apiKeys?.find((k) => k.isDefault === true);
@@ -491,10 +498,13 @@ export default function Home() {
         const restoredTranslated = data
           .split(/\s*\|\|\|\s*/)
           .map((parte: any) => parte.trim());
-
+        const translatedClean = restoreDrawingCommands(
+          restoredTranslated,
+          cleaned
+        );
         const restored = restoreDialogsGemini(
           deduplicatedStructure,
-          restoredTranslated,
+          translatedClean,
           patternToOriginalMap
         );
         updateSubFileState({
@@ -545,8 +555,19 @@ export default function Home() {
     }
   };
 
-  const download = async (file: SubFile) => {
+  const download = async (_file: SubFile) => {
+    const fileFromDb = await database.settings.get("files");
+
+    const file = fileFromDb?.value.find(
+      (file: SubFile) => file.id === _file.id
+    );
+    if (!file) return;
+    if (!file) {
+      return;
+    }
     console.log(file);
+    return;
+
     if (file.filename.endsWith(".srt")) {
       const filename = `${file.filename.replaceAll(".srt", "")}_es.ass`;
       const restored = restaurarNumerosYTiempos(

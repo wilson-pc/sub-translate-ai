@@ -24,7 +24,7 @@ class MyDexieDB extends Dexie {
 }
 
 // Inicializa la instancia de la base de datos
-const db = new MyDexieDB();
+export const database = new MyDexieDB();
 
 // --- B. Función de Persistencia ---
 
@@ -35,7 +35,7 @@ const db = new MyDexieDB();
  */
 const loadFromIDB = async <T>(key: string, initialValue: T): Promise<T> => {
   try {
-    const item = await db.settings.get(key);
+    const item = await database.settings.get(key);
     // Si item existe y tiene una propiedad 'value', se devuelve. De lo contrario, devuelve initialValue.
     return item ? (item.value as T) : initialValue;
   } catch (e) {
@@ -55,7 +55,7 @@ const loadFromIDB = async <T>(key: string, initialValue: T): Promise<T> => {
 const saveToIDB = async (key: string, value: any): Promise<void> => {
   try {
     // Usa 'put' para insertar o actualizar si la clave ya existe
-    await db.settings.put({ key, value });
+    await database.settings.put({ key, value });
   } catch (e) {
     console.error(`Dexie: Error saving key "${key}".`, e);
   }
