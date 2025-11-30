@@ -36,15 +36,7 @@ export function restoreDrawingCommands(
   );
 }
 
-export interface DeduplicationResult {
-  deduplicatedStructure: string[]; // Estructura: [ "[[id:1]]", "[[id:2]]", ... ]
-  linesToTranslate: string[]; // Para la IA: [ "[[id:1]] Hola", "[[id:2]] Mundo" ]
-  patternToOriginalMap: Map<string, string>; // Respaldo: "[[id:1]]" -> "Hola"
-}
-
-export function deduplicateDialogsGemini(
-  dialogs: string[]
-): DeduplicationResult {
+export function deduplicateDialogsGemini(dialogs: string[]) {
   const textToPatternMap = new Map<string, string>();
   const patternToOriginalMap = new Map<string, string>();
   const deduplicatedStructure: string[] = [];
@@ -52,33 +44,47 @@ export function deduplicateDialogsGemini(
 
   let patternCounter = 1;
 
-  for (const dialog of dialogs) {
-    const normalizedDialog = dialog.trim();
+  // Contador de repeticiones consecutivas
+  let lastText = "";
+  let repeatCount = 0;
 
-    // Mantener líneas vacías si existen
-    if (!normalizedDialog) {
+  for (const dialog of dialogs) {
+    const text = dialog.trim();
+
+    // Preserva líneas vacías
+    if (!text) {
       deduplicatedStructure.push("");
+      lastText = "";
+      repeatCount = 0;
       continue;
     }
 
-    if (textToPatternMap.has(normalizedDialog)) {
-      // Si ya existe, reutilizamos el ID
-      const pattern = textToPatternMap.get(normalizedDialog)!;
-      deduplicatedStructure.push(pattern);
+    // Contar repeticiones consecutivas
+    if (text === lastText) {
+      repeatCount++;
     } else {
-      // Generamos nuevo patrón estilo [[id:N]]
+      repeatCount = 1;
+      lastText = text;
+    }
+
+    // Para la primera y segunda repetición → SIEMPRE crear un nuevo patrón
+    if (repeatCount <= 2) {
       const pattern = `[[id:${patternCounter}]]`;
 
-      textToPatternMap.set(normalizedDialog, pattern);
-      patternToOriginalMap.set(pattern, normalizedDialog);
-
       deduplicatedStructure.push(pattern);
-
-      // Preparamos la línea para la IA con un espacio simple
-      linesToTranslate.push(`${pattern} ${normalizedDialog}`);
+      textToPatternMap.set(`${text}__${patternCounter}`, pattern);
+      patternToOriginalMap.set(pattern, text);
+      linesToTranslate.push(`${pattern} ${text}`);
 
       patternCounter++;
+      continue;
     }
+
+    // De la tercera repetición en adelante → deduplicar (mismo patrón que la primera aparición)
+    const firstPatternIndex = patternCounter - repeatCount + 1;
+    const reusedPattern = `[[id:${firstPatternIndex}]]`;
+
+    deduplicatedStructure.push(reusedPattern);
   }
 
   return {
@@ -87,6 +93,7 @@ export function deduplicateDialogsGemini(
     patternToOriginalMap,
   };
 }
+
 export function restoreDialogsGemini(
   deduplicatedStructure: string[],
   rawOutputFromAI: string | string[], // Aceptamos ambos

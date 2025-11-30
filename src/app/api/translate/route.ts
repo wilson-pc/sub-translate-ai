@@ -7,14 +7,15 @@ type RequestBody = {
   key: string;
 };
 
-const urls: Record<string, string> = {
+const urls: Record<string, string | undefined> = {
   deepseek: "https://api.deepseek.com",
   kimi: "https://api.moonshot.ai/v1",
+  openai: undefined,
 };
 
 async function getFullResponse(
   prompt: string,
-  url: string,
+  url: string | undefined,
   key: string,
   model: string
 ) {
@@ -22,10 +23,9 @@ async function getFullResponse(
     baseURL: url,
     apiKey: key,
   });
-  const response = await openai.chat.completions.create({
+  const response = await openai.responses.create({
     model: model,
-    stream: false,
-    messages: [
+    input: [
       {
         role: "system",
         content: `You are a translation assistant. Translate the following dialogues into **Latin American Spanish**
@@ -45,26 +45,27 @@ async function getFullResponse(
                   6. Return ONLY the translated dialogues with separators, nothing else.
                   7. ignore drawing commands {{index}}
                   8. Ignore drawing commands, return it as is [[id:index]]
-                  9. Return the complete translation between --- to be able to extract the text with a split in js
-                  
-
                   Now translate the text below following ALL the rules above:
 `,
       },
       {
         role: "user",
-        content: `Translate this subtitle to Spanish Latin America
+        content: [
+          {
+            type: "input_text",
+            text: `Translate this subtitle to Spanish Latin America
                              
            ${prompt}
 
            `,
+          },
+        ],
       },
     ],
   });
 
-  const choice = response.choices[0];
-  const text = choice?.message.content ?? "";
-
+  const text = response.output_text;
+  console.log(text);
   return text;
 }
 function chunkByDelimiter(str: string, delimiter = "|||", size = 300) {
@@ -96,10 +97,7 @@ export async function POST(req: Request) {
       model
     );
 
-    transpalted +=
-      transpalted.length > 0
-        ? "||| " + resp.split("---")[1]?.trim().split("---")[0]?.trim()
-        : resp.split("---")[1]?.trim().split("---")[0]?.trim();
+    transpalted += resp;
   }
 
   return new Response(transpalted);
