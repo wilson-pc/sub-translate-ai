@@ -44,47 +44,72 @@ export function deduplicateDialogsGemini(dialogs: string[]) {
 
   let patternCounter = 1;
 
-  // Contador de repeticiones consecutivas
+  // Variables de estado
   let lastText = "";
   let repeatCount = 0;
+
+  // Guardamos explícitamente el patrón de la primera vez que aparece el texto actual
+  let currentSequenceFirstPattern = "";
 
   for (const dialog of dialogs) {
     const text = dialog.trim();
 
-    // Preserva líneas vacías
+    // 1. Manejo de líneas vacías
     if (!text) {
       deduplicatedStructure.push("");
       lastText = "";
       repeatCount = 0;
+      currentSequenceFirstPattern = ""; // Reseteamos
       continue;
     }
 
-    // Contar repeticiones consecutivas
+    // 2. Contar repeticiones
     if (text === lastText) {
       repeatCount++;
     } else {
       repeatCount = 1;
       lastText = text;
+      currentSequenceFirstPattern = ""; // Nuevo texto, limpiamos referencia
     }
 
-    // Para la primera y segunda repetición → SIEMPRE crear un nuevo patrón
+    // 3. Lógica de asignación de patrones
+
+    // CASO A: Primera o Segunda vez que aparece → CREAR NUEVO ID
     if (repeatCount <= 2) {
       const pattern = `[[id:${patternCounter}]]`;
 
+      // Si es la primera vez (repeatCount === 1), guardamos este patrón como la "referencia"
+      // para usarlo si aparecen una 3ra, 4ta, 5ta vez...
+      if (repeatCount === 1) {
+        currentSequenceFirstPattern = pattern;
+      }
+
       deduplicatedStructure.push(pattern);
+
+      // Solo agregamos al mapa y a traducir si generamos un ID nuevo
+      // Nota: Aquí podrías optimizar más si la 2da repetición es idéntica a la 1ra,
+      // pero tu requerimiento dice explícitamente "SIEMPRE crear un nuevo patrón" para la 2da.
       textToPatternMap.set(`${text}__${patternCounter}`, pattern);
       patternToOriginalMap.set(pattern, text);
       linesToTranslate.push(`${pattern} ${text}`);
 
       patternCounter++;
-      continue;
     }
-
-    // De la tercera repetición en adelante → deduplicar (mismo patrón que la primera aparición)
-    const firstPatternIndex = patternCounter - repeatCount + 1;
-    const reusedPattern = `[[id:${firstPatternIndex}]]`;
-
-    deduplicatedStructure.push(reusedPattern);
+    // CASO B: Tercera vez o más → REUTILIZAR EL PRIMER PATRÓN (DEDUPLICAR)
+    else {
+      // Simplemente usamos la variable que guardamos en la repetición 1
+      // Esto evita el cálculo matemático que fallaba con índices negativos o cero.
+      if (currentSequenceFirstPattern) {
+        deduplicatedStructure.push(currentSequenceFirstPattern);
+      } else {
+        // Fallback defensivo (no debería ocurrir nunca si la lógica anterior es correcta)
+        const pattern = `[[id:${patternCounter}]]`;
+        deduplicatedStructure.push(pattern);
+        linesToTranslate.push(`${pattern} ${text}`);
+        patternToOriginalMap.set(pattern, text);
+        patternCounter++;
+      }
+    }
   }
 
   return {
@@ -96,60 +121,56 @@ export function deduplicateDialogsGemini(dialogs: string[]) {
 
 export function restoreDialogsGemini(
   deduplicatedStructure: string[],
-  rawOutputFromAI: string | string[], // Aceptamos ambos
+  rawOutputFromAI: string | string[],
   patternToOriginalMap: Map<string, string>
 ): string[] {
   const patternToTranslationMap = new Map<string, string>();
 
-  // 1. Convertir todo a un solo string gigante normalizado
+  // 1. Normalizar input
   let bigString = "";
   if (Array.isArray(rawOutputFromAI)) {
     bigString = rawOutputFromAI.join("\n");
   } else {
     bigString = rawOutputFromAI;
   }
-
-  // Normalizar saltos de línea extraños que a veces meten las IAs
   bigString = bigString.replace(/\r\n/g, "\n");
 
-  // 2. LA MAGIA: Dividir usando el ID como delimitador.
-  // El Regex captura el ID entero: [[ id : 123 ]]
-  // Al ponerlo entre paréntesis (), el .split() incluye el separador en el array resultante.
+  // 2. Parseo (Tu lógica de Regex estaba bien, solo añadí robustez al split)
   const splitRegex = /(\[\[\s*id:\s*\d+\s*\]\])/i;
-
   const parts = bigString.split(splitRegex);
-
-  // parts se verá así:
-  // [ "", "[[id:1]]", " Texto trad 1\nSegunda linea", "[[id:2]]", " Texto 2" ]
 
   let currentIdPattern: string | null = null;
 
   for (const part of parts) {
-    // Verificamos si esta parte es un ID (ej: [[id:50]])
+    // Es un ID
     if (splitRegex.test(part)) {
-      // Normalizamos el ID para asegurarnos que coincida con nuestro mapa (sin espacios extra)
       const match = part.match(/id:\s*(\d+)/i);
       if (match) {
+        // Reconstruimos el ID exactamente como lo generamos en deduplicate (sin espacios)
         currentIdPattern = `[[id:${match[1]}]]`;
       }
     }
-    // Si no es un ID, y tenemos un ID pendiente, esto es el TEXTO (con saltos de línea y todo)
+    // Es contenido (Texto)
     else if (currentIdPattern) {
+      // Eliminamos espacios al inicio/final del bloque
       let translation = part.trim();
 
-      // Limpieza defensiva: A veces la IA pone "[[id:1]] : Hola"
+      // Limpieza: La IA a veces pone "[[id:1]] : Hola". Quitamos ese ":" o "-" inicial.
       translation = translation.replace(/^[:.-]+/, "").trim();
 
+      // A veces el split deja un string vacío si hay dos IDs pegados. Lo ignoramos si no hay texto.
       if (translation) {
         patternToTranslationMap.set(currentIdPattern, translation);
       }
 
-      // Reseteamos para evitar asignar basura si algo falla
+      // Reseteamos null para que la siguiente iteración busque un nuevo ID
+      // Ojo: No resetearlo permite que si la IA parte el texto en varios trozos sin ID,
+      // se concatenen? No con este loop. Resetear es correcto.
       currentIdPattern = null;
     }
   }
 
-  // 3. Restaurar (igual que antes)
+  // 3. Restaurar
   const restoredArray: string[] = [];
 
   for (const item of deduplicatedStructure) {
@@ -157,14 +178,14 @@ export function restoreDialogsGemini(
       let translation = patternToTranslationMap.get(item);
 
       if (translation === undefined) {
-        // Fallback al original si la IA falló
-        // (Aunque con este método fallará mucho menos)
-        console.warn(`⚠️ Missing translation for ${item}. Using original.`);
+        // Si no hay traducción, usamos el original
+        // console.warn(`⚠️ Faltó traducción para ${item}. Usando original.`);
         translation = patternToOriginalMap.get(item) || "";
       }
 
       restoredArray.push(translation);
     } else {
+      // Líneas vacías o cosas que no eran diálogos
       restoredArray.push(item);
     }
   }
