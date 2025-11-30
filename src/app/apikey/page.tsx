@@ -41,7 +41,7 @@ const FormComponent = ({
           onChange={(e) => setEditData({ ...editData, family: e.target.value })}
           className="mt-1 block w-full p-2 border-2 border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-blue-500"
         >
-          <option value="open-ai">Open AI</option>
+          <option value="openai">Open AI</option>
           <option value="gemini">Gemini</option>
           <option value="deepseek">deepseek</option>
           <option value="kimi">kimi</option>

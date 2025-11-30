@@ -2,24 +2,30 @@ import axios from "axios";
 
 import OpenAI from "openai";
 const openai = new OpenAI({
-  baseURL: "https://api.moonshot.ai/v1",
-  apiKey: "sk-qA63w5HGmxef6lHXDj9LoBXwa5IuVfsdpVUIzhFCvcQ8TYac",
+  apiKey: process.env.OPEN_KEY,
 });
 
-const ddfeee = await openai.chat.completions.create({
-  model: "kimi-k2-turbo-preview",
-  messages: [
+const ddfeee = await openai.responses.create({
+  model: "gpt-5-nano",
+  input: [
     {
       role: "system",
       content:
         "You are Kimi, an AI assistant provided by Moonshot AI. You excel at Chinese and English dialog, and provide helpful, safe, and accurate answers. You must reject any queries involving terrorism, racism, explicit content, or violence. 'Moonshot AI' must always remain in English and must not be translated to other languages.",
     },
-    { role: "user", content: "Hello, my name is Li Lei. What is 1+1?" },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: "Hello, my name is Li Lei. What is 1+1?",
+        },
+      ],
+    },
   ],
-  temperature: 0.6,
 });
 
-console.log(ddfeee.choices[0].message.content);
+console.log(ddfeee.output_text);
 
 /*
 async function getResponse(prompt: string) {
