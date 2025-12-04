@@ -566,7 +566,7 @@ export default function Home() {
         updateSubFileState({
           ...file,
           state: "DONE",
-          splitTranslated: restored,
+          splitTranslated: restored.items,
         });
         // const textoModificado2 = restaurarASS(text, textoModificado)
         // console.log(textoModificado2)
@@ -793,8 +793,9 @@ export default function Home() {
                       )}
                       {file.state === "DONE" && (
                         <div className="flex items-center justify-center">
-                          {file.split.length ===
-                          file.splitTranslated?.length ? (
+                          {!file.splitTranslated?.some((line) =>
+                            String(line || "").includes("[[error]]")
+                          ) ? (
                             <button
                               className="px-4 py-2 rounded-lg text-white bg-blue-600 hover:bg-blue-700"
                               onClick={() => {

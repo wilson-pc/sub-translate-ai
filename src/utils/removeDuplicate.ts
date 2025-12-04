@@ -123,7 +123,10 @@ export function restoreDialogsGemini(
   deduplicatedStructure: string[],
   rawOutputFromAI: string | string[],
   patternToOriginalMap: Map<string, string>
-): string[] {
+): {
+  items: string[];
+  isError: boolean;
+} {
   const patternToTranslationMap = new Map<string, string>();
 
   // 1. Normalizar input
@@ -172,15 +175,17 @@ export function restoreDialogsGemini(
 
   // 3. Restaurar
   const restoredArray: string[] = [];
+  let isError = false;
 
   for (const item of deduplicatedStructure) {
     if (item.startsWith("[[id:") && item.endsWith("]]")) {
       let translation = patternToTranslationMap.get(item);
 
-      if (translation === undefined) {
+      if (translation === undefined || translation === null) {
         // Si no hay traducción, usamos el original
         // console.warn(`⚠️ Faltó traducción para ${item}. Usando original.`);
-        translation = patternToOriginalMap.get(item) || "";
+        translation = `[[error]]${patternToOriginalMap.get(item)}`;
+        isError = true;
       }
 
       restoredArray.push(translation);
@@ -190,5 +195,8 @@ export function restoreDialogsGemini(
     }
   }
 
-  return restoredArray;
+  return {
+    items: restoredArray,
+    isError,
+  };
 }
