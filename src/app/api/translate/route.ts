@@ -18,7 +18,7 @@ async function translateByAnthropic(sub: string, model: string, key: string) {
     apiKey: key,
   });
 
-  const msg = await anthropic.messages.create({
+  const msg: any = await anthropic.messages.create({
     model: model,
     max_tokens: 20000,
     messages: [
