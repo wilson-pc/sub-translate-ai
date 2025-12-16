@@ -45,6 +45,7 @@ const FormComponent = ({
           <option value="gemini">Gemini</option>
           <option value="deepseek">deepseek</option>
           <option value="kimi">kimi</option>
+          <option value="anthropic">Anthropic</option>
         </select>
       ) : (
         <select
@@ -60,6 +61,7 @@ const FormComponent = ({
           </option>
           <option value="deepseek">deepseek</option>
           <option value="kimi">kimi</option>
+          <option value="anthropic">Anthropic</option>
         </select>
       )}
     </div>

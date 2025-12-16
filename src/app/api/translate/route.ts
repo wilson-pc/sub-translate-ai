@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
 type RequestBody = {
@@ -12,6 +13,48 @@ const urls: Record<string, string | undefined> = {
   kimi: "https://api.moonshot.ai/v1",
   openai: undefined,
 };
+async function translateByAnthropic(sub: string, model: string, key: string) {
+  const anthropic = new Anthropic({
+    apiKey: key,
+  });
+
+  const msg = await anthropic.messages.create({
+    model: model,
+    max_tokens: 20000,
+    messages: [
+      {
+        role: "user",
+        content: `You are a translation assistant. Translate the following dialogues into **Latin American Spanish**.
+
+The input text comes from an SRT subtitle file.
+Each dialogue is separated by the token \`|||\`.
+
+---
+
+### RULES (Follow STRICTLY):
+1. ⚠️ **NEVER** remove, merge, or split dialogues.  
+   - The number of "|||" separators in the output MUST be **exactly the same** as in the input.  
+   - Each dialogue in the input corresponds to **exactly one** dialogue in the output, in the same order.
+2. Do NOT translate or remove the separators (\`|||\`).
+3. If a dialogue is empty, strange, cut off, or unreadable, **copy it as-is**.
+4. Preserve punctuation, symbols, and line breaks inside each dialogue.
+5. Do NOT add comments, explanations, or extra text.
+6. Return ONLY the translated dialogues with separators, nothing else.
+7. ignore drawing commands {{index}}
+8. Ignore drawing commands, return it as is [[id:index]]
+
+  Remember, you're translating movies or TV episodes, so don't try to change or minimize insults or bad words, as they are important to the plot.
+---
+
+Now translate the text below following ALL the rules above:
+
+${sub}`,
+      },
+    ],
+  });
+  const content = msg.content[0].text;
+  return content as string;
+}
 async function getFullResponse(
   prompt: string,
   url: string | undefined,
@@ -139,6 +182,15 @@ export async function POST(req: Request) {
   const { content, family, model, key }: RequestBody = await req.json();
 
   let transpalted: string = "";
+  if (family === "anthropic") {
+    const chunks = chunkByDelimiter(content, "|||", 500);
+    for (const element of chunks) {
+      const response = await translateByAnthropic(element, model, key);
+      transpalted += response;
+    }
+    return new Response(transpalted);
+  }
+
   const chunks = chunkByDelimiter(content, "|||", 300);
   //deepseek
   //process.env.DEEPSEEK_API_KEY
